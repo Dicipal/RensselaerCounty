@@ -1,0 +1,150 @@
+-- Load Obsidian UI
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/Library.lua"))()
+local Window = Library:CreateWindow({
+    Title = "Rensselaer County",
+    Footer = "v1.0.0",
+    ToggleKeybind = Enum.KeyCode.RightControl,
+    Center = true,
+    AutoShow = true
+})
+
+-- Main Tabs and Groupboxes
+local MainTab = Window:AddTab("Main", "house") -- updated with "house" icon
+local SettingsGroupbox = MainTab:AddLeftGroupbox("Auto Farm Settings")
+local StatusGroupbox = MainTab:AddRightGroupbox("Status Panel")
+
+-- Status Labels
+local StatusFarm = StatusGroupbox:AddLabel("Auto Farm: OFF")
+local StatusVehicle = StatusGroupbox:AddLabel("Vehicle: Not In")
+local StatusSpeed = StatusGroupbox:AddLabel("Speed: 0 studs/sec")
+local TimeLabel = StatusGroupbox:AddLabel("Time Spent: 0s")
+local MoneyLabel = StatusGroupbox:AddLabel("Money Earned: $0")
+
+-- Time Tracking
+local totalTime = 0
+local oldCash = 0
+local totalMoneyEarned = 0
+
+-- Function to format time into minutes and seconds
+local function formatTime(seconds)
+    local hours = math.floor(seconds / 3600)
+    local minutes = math.floor((seconds % 3600) / 60)
+    local seconds = seconds % 60
+
+    if hours > 0 then
+        return string.format("%dh %dm %ds", hours, minutes, seconds)
+    elseif minutes > 0 then
+        return string.format("%dm %ds", minutes, seconds)
+    else
+        return string.format("%ds", seconds)
+    end
+end
+
+-- Sound Function
+local function playSound(soundId, volume)
+    local player = game.Players.LocalPlayer
+    local sound = Instance.new("Sound")
+    sound.SoundId = "rbxassetid://" .. soundId
+    sound.Volume = volume or 1
+    sound.Parent = player.Character and player.Character:FindFirstChild("Head") or workspace
+    sound:Play()
+    sound.Ended:Connect(function()
+        sound:Destroy()
+    end)
+end
+
+-- Auto Farm Toggle
+local AutoFarmToggle = SettingsGroupbox:AddToggle("Auto farm", {
+    Text = "Enable Auto Farm",
+    Tooltip = "Automatically farms while in a vehicle.",
+    Default = false,
+    Callback = function(state)
+        getfenv().autoFarmActive = state
+        StatusFarm:SetText("Auto Farm: " .. (state and "ON" or "OFF"))
+
+        if not state then
+            playSound("6593042054", 3) -- Toggle OFF sound
+            return
+        end
+
+        totalTime = 0
+        totalMoneyEarned = 0
+        oldCash = game.Players.LocalPlayer.leaderstats and game.Players.LocalPlayer.leaderstats.Cash.Value or 0
+        TimeLabel:SetText("Time Spent: 0s")
+        MoneyLabel:SetText("Money Earned: $0")
+
+        local plr = game.Players.LocalPlayer
+        local chr = plr.Character
+        local seatPart = chr and chr:FindFirstChildOfClass("Humanoid") and chr.Humanoid.SeatPart
+
+        if not seatPart then
+            StatusVehicle:SetText("Vehicle: Not In")
+            playSound("9066167010", 3) -- Error sound
+            Library:Notify({
+                Title = "Auto Farm Error",
+                Description = "Get in a vehicle first.",
+                Time = 5
+            })
+            return
+        end
+
+        StatusVehicle:SetText("Vehicle: In")
+
+        local car = seatPart.Parent
+        car.PrimaryPart = car:FindFirstChild("Body") and car.Body:FindFirstChild("#Weight") or car.PrimaryPart
+
+        if not workspace:FindFirstChild("justanormalpart") then
+            local new = Instance.new("Part", workspace)
+            new.Name = "justanormalpart"
+            new.Anchored = true
+            new.Size = Vector3.new(10000, 10, 10000)
+            new.Position = chr.HumanoidRootPart.Position + Vector3.new(0, 5000, 0)
+        end
+
+        Library:Notify({
+            Title = "Auto Farming",
+            Description = "Farming in progress...",
+            Time = 5
+        })
+
+        task.spawn(function()
+            while getfenv().autoFarmActive do
+                task.wait(1)
+                totalTime += 1
+                TimeLabel:SetText("Time Spent: " .. formatTime(totalTime))
+
+                local currentCash = game.Players.LocalPlayer.leaderstats and game.Players.LocalPlayer.leaderstats.Cash.Value or 0
+                local moneyEarnedThisTick = currentCash - oldCash
+                oldCash = currentCash
+                totalMoneyEarned += moneyEarnedThisTick
+
+                MoneyLabel:SetText("Money Earned: $" .. totalMoneyEarned)
+
+                local carVelocity = car.PrimaryPart.Velocity
+                local currentSpeed = carVelocity.Magnitude
+                StatusSpeed:SetText(("Speed: %d studs/sec"):format(currentSpeed))
+
+                local speedCap = 50
+                if currentSpeed > speedCap then
+                    car.PrimaryPart.Velocity = carVelocity.Unit * speedCap
+                else
+                    car.PrimaryPart.Velocity = car.PrimaryPart.CFrame.LookVector * speedCap
+                end
+
+                car:PivotTo(workspace:FindFirstChild("justanormalpart").CFrame + Vector3.new(0, 7, 0))
+            end
+        end)
+    end
+})
+
+-- Anti-AFK
+Library:Notify({
+    Title = "Anti-AFK",
+    Description = "enabled.",
+    Time = 5
+})
+
+game:GetService("Players").LocalPlayer.Idled:Connect(function()
+    game:GetService("VirtualUser"):CaptureController()
+    game:GetService("VirtualUser"):ClickButton2(Vector2.new())
+end)
